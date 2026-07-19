@@ -19,5 +19,7 @@ The suite comprises 3 programs, all written in FORTRAN77:
 
 The system should work on any computer with a FORTRAN compiler.
 
-**Owner
+## Owner
 Former director of the Whittle Lab, and emeritus Professor John Denton (FRS) has released to the public his suite of turbomachinery design tools (Multall).
+
+Parallax Industries is pleased to host a copy of MULTALL-OPEN on Github for the benefit of the turbomachinery engineering community. No independent rights or ownership claims are asserted over MULTALL-OPEN. Software is provided AS IS without warranty of any kind.
