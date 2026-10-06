@@ -136,7 +136,7 @@ without the line; labelled measured 2026-10-05, not pinned by a test):
 | deck | binary | result |
 | --- | --- | --- |
 | rounded-edge L01 | stock | NaN from J = 103, `not_solved`, 3.1 s |
-| rounded-edge L01 | with the line | runs normally (does not converge, with or without the rounded edge: a stator-hub residual that is independent of the edge) |
+| rounded-edge L01 | with the line | runs normally; at CFL 0.40 it diverges at the stator hub with either edge, and on L01 at CFL 0.25 the served edge met the convergence limit at step 4381 where the cusp had not met it by the 4500-step cap (the cusp twin's residual 1.10 times the limit and falling); not converged against diverged (one pair on one binary, measured 2026-10-05, corrected 2026-10-06T01:09:54Z) |
 | rounded-edge L02 | with the line | converged, step 2746 (EAVG 9.94e-4 against CONLIM 1.0e-3) |
 | cusp L02 | stock | converged, step 2676 (the cusp deck takes the other branch, so the line changes nothing there) |
 
