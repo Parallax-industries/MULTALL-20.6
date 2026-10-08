@@ -89,3 +89,68 @@ rather than blanket-widened):
 sources (with the collided record repaired by hand) to the last printed digit —
 η_tt 0.916576147, pressure ratio 3.40803599, stage work 12289.1504 kW —
 confirming the patch changes formatting only and no computed value.
+
+## 2026-10-05 — uninitialised `SNEW(JSTRT-1)` on the `IFCUSP = 0` path of `GRID_DOWN`
+
+**Symptom.** A deck that asks MULTALL to keep the trailing edge STAGEN gridded
+(`IF_CUSP_OUT = 0` in `stage_new.dat`, i.e. `IFCUSP = 0`, no cusp rebuilt) gave
+NaN downstream of the trailing edge at start-up. Measured 2026-10-05T21:26:36Z,
+sandbox Mac build (the stock 20.6 source, `gfortran -O2 -ffp-contract=off
+-fno-range-check -std=legacy`), a rounded-edge L01 deck (`JTE` = 102):
+
+```
+J=    103  INITIAL GUESS OF: T, P ,RO, VX, VR, VT    295.74     96353.9     1.135       NaN       NaN       NaN
+INLET AND EXIT STAGNATION PRESSURES   =               NaN              NaN
+```
+
+every J from 103 on (J = 102 and below were finite), the run ended in 3.1 s and
+the sim controller read it as `not_solved`. Not measured: how often this
+happens. The outcome depends on what the stack held, so another build (the
+farm's, `-mcmodel=medium`, `JD = 2500`) may show it or may not; do not rely on
+it either way.
+
+**Cause.** `SUBROUTINE GRID_DOWN`, the `IFCUSP = 0` / `IFANGLES = 0` branch of
+`multall-open-20.6.f` (the unit around line 9991). It sets `JSTRT = J1 -
+NEXTRAP` and runs `DO 20 J = JSTRT,J2` with `SNEW(J) = SNEW(J-1) + SQRT(...)`.
+The first pass reads `SNEW(JSTRT-1)`, which nothing on this path assigns. The
+cusp branch further down assigns it (`SNEW(JSTRT-1) = 0.0` before its `DO 100`
+loop), so only the no-cusp path was exposed. Only differences of `SNEW` are
+used afterwards, so any finite value is correct; garbage that happens to be NaN
+poisons `SNEW`, the downstream grid angles and the initial guess behind the
+trailing edge. The default `IF_CUSP_OUT = 1` deck never takes this branch, which
+is why it went unseen.
+
+**Fix.** One statement, the one the cusp branch already has, immediately before
+`DO 20`:
+
+```fortran
+      SNEW(JSTRT-1) = 0.0
+```
+
+with the `PARALLAX MODIFICATION 2026-10-05` banner and a `WAS:` line above it.
+No other line of the file changes.
+
+**Measured evidence** (sandbox Mac builds from this tree's 20.6 file, with and
+without the line; labelled measured 2026-10-05, not pinned by a test):
+
+| deck | binary | result |
+| --- | --- | --- |
+| rounded-edge L01 | stock | NaN from J = 103, `not_solved`, 3.1 s |
+| rounded-edge L01 | with the line | runs normally; at CFL 0.40 it diverges at the stator hub with either edge, and on L01 at CFL 0.25 the served edge met the convergence limit at step 4381 where the cusp had not met it by the 4500-step cap (the cusp twin's residual 1.10 times the limit and falling); not converged against diverged (one pair on one binary, measured 2026-10-05, corrected 2026-10-06T01:09:54Z) |
+| rounded-edge L02 | with the line | converged, step 2746 (EAVG 9.94e-4 against CONLIM 1.0e-3) |
+| cusp L02 | stock | converged, step 2676 (the cusp deck takes the other branch, so the line changes nothing there) |
+
+**Scope.** Only `MULTALL/multall program/Multall-open-20.6/multall-open-20.6.f`
+is changed: it is the file the farm builds (`MULTALL_MAIN_DIR` / `MULTALL_MAIN_SRC`
+in `meridian-multall-toolchain.sh`). The same defect is present in the
+`lookup-table-option` copy of `multall-open-20.9.f` (the `DO 20` loop of its
+`GRID_DOWN`, around line 10414); that file is not built by the farm and is left
+as Denton wrote it.
+
+**Pin.** Meridian-Network builds this repo at a pinned commit
+(`MULTALL_GIT_REF` in `meridian-node/src/meridian_node/versions.py`,
+`deploy/wsl-image/provision.sh` and
+`deploy/wsl-image/rootfs/opt/meridian/bin/meridian-multall-toolchain.sh`, held
+equal by `tests/test_multall_toolchain.py`). The commit carrying this fix must
+be pushed to `Parallax-industries/MULTALL-20.6` and all three pins moved to it
+together before any farm run that asks for the served trailing edge.
